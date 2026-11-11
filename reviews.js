@@ -16,6 +16,37 @@ const demonstrationReviews = {
   ],
 };
 
+function getLocalSubmittedReviews(destinationId) {
+  try {
+    const raw = localStorage.getItem("kosovo-user-reviews");
+    const all = raw ? JSON.parse(raw) : {};
+    return Array.isArray(all[destinationId]) ? all[destinationId] : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalSubmittedReviews(destinationId, reviews) {
+  try {
+    const raw = localStorage.getItem("kosovo-user-reviews");
+    const all = raw ? JSON.parse(raw) : {};
+    all[destinationId] = reviews;
+    localStorage.setItem("kosovo-user-reviews", JSON.stringify(all));
+  } catch {
+    // Ignore storage errors and keep the in-page review rendering working.
+  }
+}
+
+function addLocalSubmittedReview(destinationId, review) {
+  const reviews = getLocalSubmittedReviews(destinationId);
+  reviews.unshift({
+    ...review,
+    createdAt: review.createdAt || new Date().toISOString(),
+    localOnly: true,
+  });
+  saveLocalSubmittedReviews(destinationId, reviews);
+}
+
 export async function renderReviews(destination) {
   const version = ++requestVersion;
   const section = reviewsContainer.querySelector(".reviews-section");
@@ -28,7 +59,13 @@ export async function renderReviews(destination) {
     attachReviewForm(section, destination);
   } catch {
     if (version !== requestVersion || !reviewsContainer.querySelector(".reviews-section")) return;
-    section.innerHTML = `<div class="panel-section-heading"><h4>Visitor reviews</h4></div><p class="review-empty">Reviews could not be loaded. The review service may be unavailable.</p>${renderManualReviews(destination, manualReviews)}${renderDemonstrationReviews(destination)}<div class="review-form-mount"></div>`;
+    const localReviews = getLocalSubmittedReviews(destination.id);
+    const fallbackData = {
+      reviews: [],
+      count: localReviews.length,
+      average: localReviews.length ? localReviews.reduce((sum, review) => sum + Number(review.rating), 0) / localReviews.length : 0,
+    };
+    section.innerHTML = renderReviewList(fallbackData, destination, manualReviews);
     attachReviewForm(section, destination);
   }
 }
@@ -42,20 +79,38 @@ async function getReviews(destinationId, force = false) {
   return data;
 }
 
+function renderUserReviewSection(destination) {
+  const reviews = getLocalSubmittedReviews(destination.id);
+  if (!reviews.length) return "";
+  const items = reviews.map((review) => `
+    <article class="review-item user-review-item">
+      <div class="review-topline"><span class="review-author">${escapeHtml(review.name)}</span><span class="demo-review-badge">MY REVIEW</span><time class="review-date" datetime="${escapeHtml(review.createdAt)}">${formatDate(review.createdAt)}</time></div>
+      <span class="rating-stars" aria-label="${review.rating} out of 5 stars">${starText(review.rating)}</span>
+      <p>${escapeHtml(review.text)}</p>
+    </article>`).join("");
+  return `<section class="user-review-section" aria-label="Your submitted reviews">
+    <div class="panel-section-heading"><h4>Your review</h4><span>${reviews.length} ${reviews.length === 1 ? "entry" : "entries"}</span></div>
+    <div class="reviews-list">${items}</div>
+  </section>`;
+}
+
 function renderReviewList(data, destination, manualReviews) {
-  const average = data.count ? `${Number(data.average).toFixed(1)} <span class="rating-stars">${starText(Math.round(data.average))}</span> <span>(${data.count})</span>` : "Not rated yet";
-  const items = data.reviews.map((review) => `
+  const backendReviews = Array.isArray(data.reviews) ? data.reviews : [];
+  const localReviews = getLocalSubmittedReviews(destination.id);
+  const allReviews = [...localReviews, ...backendReviews];
+  const averageValue = allReviews.length ? allReviews.reduce((sum, review) => sum + Number(review.rating), 0) / allReviews.length : 0;
+  const average = allReviews.length ? `${Number(averageValue).toFixed(1)} <span class="rating-stars">${starText(Math.round(averageValue))}</span> <span>(${allReviews.length})</span>` : "Not rated yet";
+  const items = backendReviews.map((review) => `
     <article class="review-item">
       <div class="review-topline"><span class="review-author">${escapeHtml(review.name)}</span><time class="review-date" datetime="${escapeHtml(review.createdAt)}">${formatDate(review.createdAt)}</time></div>
       <span class="rating-stars" aria-label="${review.rating} out of 5 stars">${starText(review.rating)}</span>
       <p>${escapeHtml(review.text)}</p>
     </article>`).join("");
-  const empty = data.count ? "" : `<p class="review-empty">No visitor reviews yet. Be the first to share your experience.</p>`;
   return `<div class="panel-section-heading"><h4>Visitor reviews</h4><span class="review-average">${average}</span></div>
     <p class="review-notice">Reviews are submitted by visitors and are not independently verified.</p>
-    <div class="reviews-list">${empty}${items}</div>
+    <div class="reviews-list">${items}</div>
+    ${renderUserReviewSection(destination)}
     ${renderManualReviews(destination, manualReviews)}
-    ${renderDemonstrationReviews(destination)}
     <div class="review-form-mount"></div>`;
 }
 
@@ -76,22 +131,6 @@ function renderManualReviews(destination, reviews) {
   return `<section class="manual-review-section" aria-label="Manually added source-linked reviews">
     <div class="panel-section-heading"><h4>Manually added reviews</h4><span>${entries.length} ${entries.length === 1 ? "entry" : "entries"}</span></div>
     <p class="manual-review-disclaimer">Source-linked entries added by the site owner; not included in visitor ratings.</p>
-    <div class="reviews-list">${items}</div>
-  </section>`;
-}
-
-function renderDemonstrationReviews(destination) {
-  const examples = demonstrationReviews[destination?.id] || [];
-  if (!examples.length) return "";
-  const items = examples.map((review) => `
-    <article class="review-item demo-review-item">
-      <div class="review-topline"><span class="review-author">Fictional example</span><span class="demo-review-badge">DEMO</span></div>
-      <span class="rating-stars" aria-label="Demonstration rating: ${review.rating} out of 5 stars">${starText(review.rating)}</span>
-      <p>${escapeHtml(review.text)}</p>
-    </article>`).join("");
-  return `<section class="demo-review-section" aria-label="Demonstration reviews, not real visitor feedback">
-    <div class="panel-section-heading"><h4>Example reviews</h4><span class="demo-review-heading">Demonstration only</span></div>
-    <p class="demo-review-disclaimer">These fictional samples are not visitor testimonials and are excluded from visitor ratings.</p>
     <div class="reviews-list">${items}</div>
   </section>`;
 }
@@ -130,7 +169,17 @@ function attachReviewForm(section, destination) {
       reviewCache.delete(destination.id);
       await renderReviews(destination);
     } catch (submissionError) {
-      error.textContent = submissionError.message === "Failed to fetch" ? "The review service is unavailable. Try again when the site server is running." : submissionError.message;
+      const submittedReview = {
+        name: data.get("name") || "You",
+        rating: Number(data.get("rating")) || 5,
+        text: String(data.get("text") || ""),
+        createdAt: new Date().toISOString(),
+      };
+      if (submittedReview.text.trim()) {
+        addLocalSubmittedReview(destination.id, submittedReview);
+        await renderReviews(destination);
+      }
+      error.textContent = submissionError.message === "Failed to fetch" ? "The review service is unavailable, but your review has been saved locally for this browser." : submissionError.message;
       error.hidden = false;
       submit.disabled = false;
       submit.innerHTML = 'Submit review <span aria-hidden="true">↗</span>';

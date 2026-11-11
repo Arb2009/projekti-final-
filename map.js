@@ -2,7 +2,6 @@ import { destinations } from "./destinations.js";
 
 const kosovoBounds = L.latLngBounds([41.85, 19.95], [43.25, 21.9]);
 const markers = new Map();
-let nearbyMarkers = [];
 let map;
 let onSelectDestination;
 let searchMarker;
@@ -52,63 +51,10 @@ export function filterMapMarkers({ category = "all", destinationIds = null } = {
       && (!activeDestinationIds || activeDestinationIds.has(id));
     setMarkerVisibility(marker, visible);
   }
-  nearbyMarkers.forEach(({ marker, category: placeCategory }) => {
-    setMarkerVisibility(marker, activeCategory === "all" || activeCategory === placeCategory);
-  });
 }
 
-export async function getNearbyPlaces(lat, lon, { radius = 5000, signal } = {}) {
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new TypeError("Nearby-place coordinates must be numbers.");
-  const query = `[out:json][timeout:25];(node["amenity"~"^(restaurant|cafe)$"](around:${radius},${lat},${lon});way["amenity"~"^(restaurant|cafe)$"](around:${radius},${lat},${lon}););out center tags 80;`;
-  const response = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
-    body: `data=${encodeURIComponent(query)}`,
-    signal: signal || AbortSignal.timeout(22000),
-  });
-  if (!response.ok) throw new Error("Nearby places are temporarily unavailable.");
-  const data = await response.json();
-  return Array.isArray(data.elements) ? data.elements : [];
-}
-
-export async function showNearbyPlaces(lat, lon, { isCurrent = () => true, ...options } = {}) {
-  const places = (await getNearbyPlaces(lat, lon, options)).map((element) => {
-    const tags = element.tags || {};
-    const placeLat = element.lat ?? element.center?.lat;
-    const placeLon = element.lon ?? element.center?.lon;
-    return {
-      id: `${element.type}-${element.id}`,
-      name: tags.name || tags["name:en"] || "Unnamed place",
-      kind: tags.amenity === "cafe" ? "Café" : "Restaurant",
-      lat: placeLat,
-      lng: placeLon,
-      tags,
-      distance: distanceKm(lat, lon, placeLat, placeLon),
-    };
-  }).filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng) && place.name !== "Unnamed place")
-    .sort((a, b) => a.distance - b.distance).slice(0, 7);
-
-  if (isCurrent()) replaceNearbyMarkers(places);
-  return places;
-}
-
-export function replaceNearbyMarkers(places) {
-  nearbyMarkers.forEach(({ marker }) => map.removeLayer(marker));
-  nearbyMarkers = places.map((place) => {
-    const iconCharacter = place.kind === "Café" ? "◷" : "▦";
-    const category = place.kind === "Café" ? "cafe" : "restaurant";
-    const icon = L.divIcon({
-      className: "",
-      html: `<span class="nearby-map-marker marker-${category}">${iconCharacter}</span>`,
-      iconSize: [27, 27],
-      iconAnchor: [13, 13],
-    });
-    const marker = L.marker([place.lat, place.lng], { icon, title: `${place.kind}: ${place.name}`, alt: `${place.kind}: ${place.name}` });
-    const distance = place.distance < 1 ? `${Math.round(place.distance * 1000)} m` : `${place.distance.toFixed(1)} km`;
-    marker.bindPopup(`<div class="venue-popup"><strong>${escapeHtml(place.name)}</strong><span>${place.kind} · ${distance}</span><a href="https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}" target="_blank" rel="noreferrer">Directions ↗</a></div>`);
-    return { marker, category };
-  });
-  filterMapMarkers({ category: activeCategory, destinationIds: activeDestinationIds });
+export function replaceNearbyMarkers() {
+  if (!map) return;
 }
 
 function setMarkerVisibility(marker, visible) {

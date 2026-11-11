@@ -1,12 +1,190 @@
-import { categories, categoryLabels, destinations, getFeaturedDestinations, mapCategories } from "./destinations.js";
-import { filterMapMarkers, fitKosovo, focusDestination, initializeMap, replaceNearbyMarkers, showGeocodedPlace, showNearbyPlaces } from "./map.js";
+import { categories, categoryLabels, destinations, getActivityIdeas, getDestinationDescription, getFeaturedDestinations, mapCategories } from "./destinations.js";
+import { filterMapMarkers, fitKosovo, focusDestination, initializeMap, replaceNearbyMarkers, showGeocodedPlace } from "./map.js";
 import { renderReviews } from "./reviews.js";
 
 const featuredDestinations = getFeaturedDestinations();
 const favoritesKey = "explore-kosovo-favorites";
-const state = { category: "all", mapCategory: "all", query: "", favoritesOnly: false, selectedId: null, placesRequest: 0 };
+const state = { category: "all", mapCategory: "all", query: "", favoritesOnly: false, selectedId: null, placesRequest: 0, language: "en" };
 let favorites = loadFavorites();
 let toastTimer;
+const photoCache = new Map();
+
+const translations = {
+  en: {
+    "nav.destinations": "Destinations",
+    "nav.map": "Explore the map",
+    "nav.about": "About Kosovo",
+    "nav.saved": "Saved",
+    "hero.eyebrow": "The heart of the Balkans",
+    "hero.title": "Discover Kosovo",
+    "hero.titleAccent": "– A Hidden Gem of Europe",
+    "hero.copy": "Wild mountain mornings, centuries-old streets, and the kind of welcome that stays with you.",
+    "search.label": "Search places in Kosovo",
+    "search.placeholder": "Try “Prizren” or “waterfalls”",
+    "search.button": "Explore",
+    "search.status": "17 places to start your journey",
+    "surprise.button": "Surprise me",
+    "about.eyebrow": "Nature and culture in one place",
+    "about.text": "Kosovo blends dramatic mountain landscapes, alpine lakes, deep valleys, and a rich cultural heritage shaped by Ottoman, Balkan, and European influences.",
+    "about.link": "Find your way around",
+    "destinations.eyebrow": "A good place to begin",
+    "destinations.heading": "Places that stay with you",
+    "destinations.link": "All destinations",
+    "map.eyebrow": "Your next detour",
+    "map.heading": "Get to know the place",
+    "map.text": "From the high peaks to the lively old towns. Pick a pin, find what’s nearby, and make it your own.",
+    "map.filterLabel": "Show me",
+    "closing.eyebrow": "Go a little further",
+    "closing.heading": "Take the scenic route home.",
+    "closing.link": "Find your next stop",
+    "footer.note": "Kosovo is in the Balkans; Prishtina is its capital.",
+    "footer.made": "Made for curious travellers",
+    "search.status.found": "{count} places found",
+    "search.status.empty": "No places match this search yet. Try another name or category.",
+    "detail.getDirections": "Get directions",
+    "detail.morePhotos": "More photos",
+    "detail.notRated": "Not rated yet",
+    "detail.favoriteAdd": "Add to favourites",
+    "detail.favoriteRemove": "Remove from favourites",
+    "selected.activityHeading": "What to do here",
+    "random.result": "Picked a surprise destination for you",
+  },
+  sq: {
+    "nav.destinations": "Destinacione",
+    "nav.map": "Eksploroni hartën",
+    "nav.about": "Rreth Kosovës",
+    "nav.saved": "Të ruajtura",
+    "hero.eyebrow": "Qendra e Ballkanit",
+    "hero.title": "Zbuloni Kosovën",
+    "hero.titleAccent": "– Një thesar i fshehur në Evropë",
+    "hero.copy": "Mëngjeset e larta malore, rrugët e vjetra, dhe mikpritja që mbetet me ju.",
+    "search.label": "Kërkoni vende në Kosovë",
+    "search.placeholder": "Provojeni “Prizrenin” ose “ujëvarat”",
+    "search.button": "Eksploro",
+    "search.status": "17 vende për të nisur udhëtimin tuaj",
+    "surprise.button": "Çudi mua",
+    "about.eyebrow": "Natyra dhe kultura në një vend",
+    "about.text": "Kosova kombinon peizazhe dramatike malore, liqene alpine, lugina të thella dhe trashëgimi të pasur kulturore të formuar nga ndikimet osmane, ballkanike dhe evropiane.",
+    "about.link": "Gjeni rrugën tuaj",
+    "destinations.eyebrow": "Një fillim i mirë",
+    "destinations.heading": "Vende që ju mbajnë mend",
+    "destinations.link": "Të gjitha destinacionet",
+    "map.eyebrow": "Udhëtimi juaj i radhës",
+    "map.heading": "Njihuni me vendin",
+    "map.text": "Nga majat e larta te qytetet e gjalla. Zgjidhni një pikë dhe bëjeni të tuajën.",
+    "map.filterLabel": "Më trego",
+    "closing.eyebrow": "Shko një pak më tej",
+    "closing.heading": "Shko me rrugën skenike drejt shtëpisë.",
+    "closing.link": "Gjejni ndalesën tuaj të radhës",
+    "footer.note": "Kosova ndodhet në Ballkan; Prishtina është kryeqyteti.",
+    "footer.made": "U bë për udhëtarët kurioz",
+    "search.status.found": "{count} vende u gjetën",
+    "search.status.empty": "Asnjë vend nuk përputhet me këtë kërkim. Provoni një emër tjetër.",
+    "detail.getDirections": "Merr drejtimet",
+    "detail.morePhotos": "Më shumë foto",
+    "detail.notRated": "Ende nuk ka vlerësim",
+    "detail.favoriteAdd": "Shto te të ruajturat",
+    "detail.favoriteRemove": "Hiq nga të ruajturat",
+    "selected.activityHeading": "Çfarë mund të bëni këtu",
+    "random.result": "Zgjodhëm një vend të çuditshëm për ju",
+  },
+  sr: {
+    "nav.destinations": "Destinacije",
+    "nav.map": "Istražite mapu",
+    "nav.about": "O Kosovu",
+    "nav.saved": "Sačuvano",
+    "hero.eyebrow": "Srce Balkana",
+    "hero.title": "Otkrijte Kosovo",
+    "hero.titleAccent": "– Skriveni dragulj Evrope",
+    "hero.copy": "Planinski jutarnji pogledi, vekovne ulice i gostoprimstvo koje ostaje u sećanju.",
+    "search.label": "Pretražite mesta u Kosovu",
+    "search.placeholder": "Probajte “Prizren” ili “vodopadi”",
+    "search.button": "Istraži",
+    "search.status": "17 mesta za početak putovanja",
+    "surprise.button": "Iznenadi me",
+    "about.eyebrow": "Priroda i kultura na jednom mestu",
+    "about.text": "Kosovo spaja dramatične planinske pejzaže, alpske jezera, duboke doline i bogato kulturno nasleđe oblikovano osmanskim, balkanskim i evropskim uticajima.",
+    "about.link": "Pronađite svoj put",
+    "destinations.eyebrow": "Dobar početak",
+    "destinations.heading": "Mesta koja ostaju s vama",
+    "destinations.link": "Sve destinacije",
+    "map.eyebrow": "Vaša sledeća avantura",
+    "map.heading": "Upoznajte mesto",
+    "map.text": "Od visokih vrhova do živih starih gradova. Izaberite oznaku i napravite ga svojim.",
+    "map.filterLabel": "Pokaži mi",
+    "closing.eyebrow": "Idi malo dalje",
+    "closing.heading": "Vratite se kući scenom kroz put.",
+    "closing.link": "Pronađite sledeću stanicu",
+    "footer.note": "Kosovo je u Balkanu; Priština je glavni grad.",
+    "footer.made": "Napravljen za radoznale putnike",
+    "search.status.found": "{count} mesta je pronađeno",
+    "search.status.empty": "Nijedno mesto ne odgovara ovoj pretrazi. Probajte drugi naziv.",
+    "detail.getDirections": "Uputstva za put",
+    "detail.morePhotos": "Više fotografija",
+    "detail.notRated": "Još nije ocenjeno",
+    "detail.favoriteAdd": "Dodaj u omiljene",
+    "detail.favoriteRemove": "Ukloni iz omiljenih",
+    "selected.activityHeading": "Šta možete raditi ovde",
+    "random.result": "Izabrali smo vam iznenađujuću destinaciju",
+  }
+};
+
+function t(key, fallback = "") {
+  return translations[state.language]?.[key] || translations.en[key] || fallback;
+}
+
+function setLanguage(language) {
+  state.language = language;
+  document.documentElement.lang = language;
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    const key = element.dataset.i18n;
+    const value = translations[language]?.[key] || translations.en[key] || element.textContent;
+    element.textContent = value;
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+    const key = element.dataset.i18nPlaceholder;
+    element.placeholder = translations[language]?.[key] || translations.en[key] || element.placeholder;
+  });
+  document.querySelectorAll(".language-button").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.lang === language);
+  });
+  renderDestinationCards();
+  applyMapFilters();
+  updateSearchStatus();
+  if (state.selectedId) {
+    const selected = destinations.find(({ id }) => id === state.selectedId);
+    if (selected) selectDestination(selected, { moveMap: false });
+  }
+}
+
+function updateSearchStatus() {
+  const count = getFilteredDestinations().length;
+  const text = state.query
+    ? count
+      ? translations[state.language]["search.status.found"].replace("{count}", count)
+      : translations[state.language]["search.status.empty"]
+    : translations[state.language]["search.status"];
+  searchStatus.textContent = text;
+}
+
+function pickRandomDestination() {
+  const pool = destinations.filter(({ id }) => id !== state.selectedId);
+  const chosen = pool[Math.floor(Math.random() * pool.length)] || destinations[0];
+  selectDestination(chosen);
+  document.getElementById("map-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  showToast(translations[state.language]["random.result"] || translations.en["random.result"]);
+}
+
+function showToast(message) {
+  const existing = document.querySelector(".toast");
+  if (existing) existing.remove();
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.remove(), 2200);
+}
 
 const grid = document.getElementById("destination-grid");
 const panel = document.getElementById("place-panel");
@@ -16,6 +194,7 @@ const searchStatus = document.getElementById("search-status");
 document.getElementById("year").textContent = new Date().getFullYear();
 renderCategoryFilters();
 renderMapFilters();
+setLanguage(state.language);
 renderDestinationCards();
 updateFavoriteCount();
 initializeMap(selectDestination);
@@ -27,12 +206,13 @@ searchInput.addEventListener("input", () => {
   state.query = searchInput.value.trim();
   renderDestinationCards();
   applyMapFilters();
-  const matchCount = getFilteredDestinations().length;
-  searchStatus.textContent = state.query ? `${matchCount} ${matchCount === 1 ? "place" : "places"} found` : `${destinations.length} places to start your journey`;
+  updateSearchStatus();
 });
 document.getElementById("map-reset").addEventListener("click", fitKosovo);
 document.getElementById("favourites-toggle").addEventListener("click", toggleFavoritesView);
 document.getElementById("menu-toggle").addEventListener("click", toggleNavigation);
+document.getElementById("surprise-button").addEventListener("click", pickRandomDestination);
+document.querySelectorAll(".language-button").forEach((button) => button.addEventListener("click", () => setLanguage(button.dataset.lang)));
 document.querySelectorAll(".main-nav a").forEach((link) => link.addEventListener("click", closeNavigation));
 
 function renderCategoryFilters() {
@@ -68,6 +248,11 @@ function syncFilterButtons() {
   });
 }
 
+function getGoogleMapsDirectionsLink(name, lat, lng) {
+  const destination = name ? `${name}, Kosovo` : `${lat}, ${lng}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+}
+
 function getFilteredDestinations() {
   const query = state.query.toLocaleLowerCase();
   return destinations.filter((destination) => {
@@ -84,7 +269,7 @@ function renderDestinationCards() {
   const cards = featuredDestinations.filter(({ id }) => visibleIds.has(id));
   grid.innerHTML = cards.map((destination, index) => `
     <article class="destination-card" data-destination="${destination.id}" style="animation-delay:${index * 55}ms">
-      <div class="card-image-wrap"><div class="card-image-placeholder" aria-hidden="true">${destination.icon}</div><a class="photo-credit card-photo-credit" hidden target="_blank" rel="noreferrer" aria-label="Photo credit"></a><span class="card-category">${categoryLabels[destination.category]}</span>
+      <div class="card-image-wrap"><div class="card-image-placeholder" aria-hidden="true"></div><a class="photo-credit card-photo-credit" hidden target="_blank" rel="noreferrer" aria-label="Photo credit"></a><span class="card-category">${categoryLabels[destination.category]}</span>
         <button class="save-button ${favorites.has(destination.id) ? "is-saved" : ""}" type="button" data-favorite="${destination.id}" aria-label="${favorites.has(destination.id) ? "Remove" : "Save"} ${escapeHtml(destination.name)} ${favorites.has(destination.id) ? "from" : "to"} favourites" aria-pressed="${favorites.has(destination.id)}">${favorites.has(destination.id) ? "♥" : "♡"}</button></div>
       <div class="card-content"><p class="card-location">${escapeHtml(destination.area)}</p><h3><button class="card-open" type="button">${escapeHtml(destination.name)}</button></h3><p class="card-description">${escapeHtml(destination.description)}</p></div>
     </article>`).join("");
@@ -101,8 +286,8 @@ function renderDestinationCards() {
     event.stopPropagation();
     toggleFavorite(button.dataset.favorite);
   }));
-  if (state.favoritesOnly && visible.length === 0) document.getElementById("destination-empty").textContent = "No saved places match. Save a destination to find it here.";
-  else document.getElementById("destination-empty").textContent = "No places match this search yet. Try another name or category.";
+  const emptyMessage = translations[state.language]["search.status.empty"] || "No places match this search yet. Try another name or category.";
+  document.getElementById("destination-empty").textContent = state.favoritesOnly && visible.length === 0 ? "No saved places match. Save a destination to find it here." : emptyMessage;
 }
 
 function applyMapFilters() {
@@ -115,59 +300,23 @@ function selectDestination(destination, { moveMap = true } = {}) {
   state.selectedId = destination.id;
   const requestId = ++state.placesRequest;
   replaceNearbyMarkers([]);
+  const activities = getActivityIdeas(destination).map((activity) => `<li>${escapeHtml(activity)}</li>`).join("");
   panel.innerHTML = `
     <article class="place-detail" data-selected="${destination.id}">
-      <div class="detail-photo-wrap"><div class="card-image-placeholder" aria-hidden="true">${destination.icon}</div><a class="photo-credit" hidden target="_blank" rel="noreferrer"></a></div>
-      <div class="detail-heading"><div class="detail-overline"><span>${categoryLabels[destination.category]}</span><button class="save-button ${favorites.has(destination.id) ? "is-saved" : ""}" type="button" data-detail-favorite aria-label="${favorites.has(destination.id) ? "Remove from" : "Add to"} favourites" aria-pressed="${favorites.has(destination.id)}">${favorites.has(destination.id) ? "♥" : "♡"}</button></div><h3>${escapeHtml(destination.name)}</h3><p class="detail-location">${escapeHtml(destination.area)} · ${destination.lat.toFixed(4)}° N, ${destination.lng.toFixed(4)}° E</p></div>
-      <p class="detail-copy">${escapeHtml(destination.description)}</p>
-      <div class="detail-actions"><a class="button-primary" href="https://www.google.com/maps/dir/?api=1&destination=${destination.lat},${destination.lng}" target="_blank" rel="noreferrer">Get directions <span aria-hidden="true">↗</span></a><a class="button-secondary more-photos" href="https://commons.wikimedia.org/wiki/Special:MediaSearch?type=image&search=${encodeURIComponent(`${destination.name} Kosovo`)}" target="_blank" rel="noreferrer">More photos <span aria-hidden="true">↗</span></a></div>
-      <div class="detail-rating"><span class="rating-stars">☆☆☆☆☆</span><span>Not rated yet</span></div>
-      <section class="nearby-section"><div class="panel-section-heading"><h4>Eat & drink nearby</h4><span>OpenStreetMap data</span></div><div class="nearby-list" aria-live="polite"><div class="nearby-status"><span class="loading-spinner"></span> Finding nearby places…</div></div></section>
+      <div class="detail-photo-wrap"><div class="card-image-placeholder" aria-hidden="true"></div><a class="photo-credit" hidden target="_blank" rel="noreferrer"></a></div>
+      <div class="detail-heading"><div class="detail-overline"><span>${categoryLabels[destination.category]}</span><button class="save-button ${favorites.has(destination.id) ? "is-saved" : ""}" type="button" data-detail-favorite aria-label="${favorites.has(destination.id) ? t("detail.favoriteRemove") : t("detail.favoriteAdd")}" aria-pressed="${favorites.has(destination.id)}">${favorites.has(destination.id) ? "♥" : "♡"}</button></div><h3>${escapeHtml(destination.name)}</h3><p class="detail-location">${escapeHtml(destination.area)} · ${destination.lat.toFixed(4)}° N, ${destination.lng.toFixed(4)}° E</p></div>
+      <p class="detail-copy">${escapeHtml(getDestinationDescription(destination, state.language))}</p>
+      <div class="detail-activities"><h4>${translations[state.language]["selected.activityHeading"] || "What to do here"}</h4><ul>${activities}</ul></div>
+      <div class="detail-actions"><a class="button-primary" href="${getGoogleMapsDirectionsLink(destination.name, destination.lat, destination.lng)}" target="_blank" rel="noreferrer">${t("detail.getDirections")} <span aria-hidden="true">↗</span></a><a class="button-secondary more-photos" href="https://commons.wikimedia.org/wiki/Special:MediaSearch?type=image&search=${encodeURIComponent(`${destination.name} Kosovo`)}" target="_blank" rel="noreferrer">${t("detail.morePhotos")} <span aria-hidden="true">↗</span></a></div>
+      <div class="detail-rating"><span class="rating-stars">☆☆☆☆☆</span><span>${t("detail.notRated")}</span></div>
       <section class="reviews-section" aria-label="Visitor reviews"></section>
     </article>`;
   panel.querySelector("[data-detail-favorite]").addEventListener("click", () => toggleFavorite(destination.id));
   if (destination.photo) displayDetailPhoto(destination, destination.photo);
   if (moveMap) focusDestination(destination);
-  loadNearbyPlaces(destination, requestId);
   loadDestinationPhoto(destination, requestId);
   renderReviews(destination);
-}
-
-async function loadNearbyPlaces(destination, requestId) {
-  const area = panel.querySelector(".nearby-list");
-  if (!area) return;
-  try {
-    const places = await showNearbyPlaces(destination.lat, destination.lng, { isCurrent: () => requestId === state.placesRequest && panel.contains(area) });
-    if (requestId !== state.placesRequest || !panel.contains(area)) return;
-    renderNearbyPlaces(area, places, destination);
-  } catch {
-    if (requestId !== state.placesRequest || !panel.contains(area)) return;
-    area.innerHTML = `<p class="nearby-empty">Nearby listings are unavailable right now. Try again later; places are supplied by OpenStreetMap contributors.</p>`;
-  }
-}
-
-function renderNearbyPlaces(container, places, destination) {
-  if (!places.length) {
-    container.innerHTML = `<p class="nearby-empty">No named cafés or restaurants were found within 8 km in OpenStreetMap data.</p>`;
-    return;
-  }
-  container.innerHTML = places.map((place) => {
-    const hours = place.tags.opening_hours ? `<span>Hours: ${escapeHtml(place.tags.opening_hours)}</span>` : "";
-    const address = [place.tags["addr:street"], place.tags["addr:housenumber"], place.tags["addr:city"]].filter(Boolean).join(" ") || `${place.lat.toFixed(4)}° N, ${place.lng.toFixed(4)}° E`;
-    const stars = place.tags.stars ? `<span>OSM classification: ${escapeHtml(place.tags.stars)} stars</span>` : "<span>Customer ratings and reviews are not listed in OpenStreetMap.</span>";
-    const photoUrl = getVenuePhotoUrl(place.tags);
-    const photo = photoUrl ? `<img class="nearby-photo" src="${escapeHtml(photoUrl)}" alt="" loading="lazy" onerror="this.hidden=true">` : "";
-    return `<article class="nearby-item" tabindex="0" role="button" aria-expanded="false" data-place="${escapeHtml(place.id)}"><div class="nearby-main">${photo}<div class="nearby-copy"><p class="nearby-name">${escapeHtml(place.name)}</p><span class="nearby-meta">${place.kind} · ${place.distance < 1 ? `${Math.round(place.distance * 1000)} m` : `${place.distance.toFixed(1)} km`}</span></div><span class="nearby-icon" aria-hidden="true">${place.kind === "Café" ? "◷" : "⌂"}</span></div>
-      <div class="nearby-extra"><span>${escapeHtml(address)}</span>${hours ? `<br>${hours}` : ""}<br>${stars}<br><a href="https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}" target="_blank" rel="noreferrer">Directions ↗</a></div></article>`;
-  }).join("");
-  container.querySelectorAll(".nearby-item").forEach((item) => {
-    const toggle = () => {
-      const expanded = item.classList.toggle("is-expanded");
-      item.setAttribute("aria-expanded", String(expanded));
-    };
-    item.addEventListener("click", (event) => { if (!event.target.closest("a")) toggle(); });
-    item.addEventListener("keydown", (event) => { if ((event.key === "Enter" || event.key === " ") && !event.target.closest("a")) { event.preventDefault(); toggle(); } });
-  });
+  updateSearchStatus();
 }
 
 async function loadDestinationPhoto(destination, requestId) {
@@ -179,7 +328,6 @@ async function loadDestinationPhoto(destination, requestId) {
   if (photo) displayDetailPhoto(destination, photo);
 }
 
-const photoCache = new Map();
 async function getCommonsPhoto(searchQuery) {
   if (!photoCache.has(searchQuery)) {
     const request = (async () => {
@@ -341,16 +489,6 @@ function closeNavigation() {
   document.getElementById("menu-toggle").setAttribute("aria-expanded", "false");
   document.getElementById("menu-toggle").setAttribute("aria-label", "Open navigation");
   document.getElementById("main-nav").classList.remove("is-open");
-}
-function showToast(message) {
-  document.querySelector(".toast")?.remove();
-  const toast = document.createElement("div");
-  toast.className = "toast";
-  toast.setAttribute("role", "status");
-  toast.textContent = message;
-  document.body.append(toast);
-  window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.remove(), 3400);
 }
 function getVenuePhotoUrl(tags) {
   if (tags.image) {
